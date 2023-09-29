@@ -11,6 +11,11 @@
 #define MAX_LEN 256
 #define len(x) (sizeof(x) / sizeof(x[0]))
 
+int is_in_range(time_t modification_time, time_t start_time, time_t finish_time)
+{
+    return (modification_time >= start_time && modification_time <= finish_time);
+}
+
 /* Returns last element of string split by given delimeter */
 char *get_last_el_of_split(char *path, char *delim)
 {
@@ -55,43 +60,54 @@ int is_valid_format(char *path, char *file_format)
 }
 
 /* Check if file has correct date time format in name */
-int has_correct_date_format(const char *file_name)
+int has_correct_date_format(const char *string, const char *format)
 {
     struct tm tm;
 
-    if (strptime(file_name, "%Y%m%d_%H%M%S", &tm) != NULL)
+    if (strptime(string, format, &tm) != NULL)
         return 1;
 
     return 0;
 }
 
-int has_datetime_format(const char *filename)
+int has_datetime_format(const char *filename, char **matched_regex)
 {
-    regex_t regex;
-    if (regcomp(&regex, ".*_([0-9]{4})-([0-9]{2})-([0-9]{2})_([0-9]{2})-([0-9]{2})-([0-9]{2})", REG_EXTENDED) != 0)
-    {
-        perror("Failed to compile regular expression");
-        return 0;
-    }
+    char regex_patterns[3][MAX_LEN] = {
+        ".*([0-9]{4})-([0-9]{2})-([0-9]{2})_([0-9]{2})-([0-9]{2})-([0-9]{2})",
+        ".*([0-9]{4})([0-9]{2})([0-9]{2})_([0-9]{2})([0-9]{2})([0-9]{2})",
+        ".*([0-9]{4})-([0-9]{2})-([0-9]{2})-([0-9]{2})h([0-9]{2})m([0-9]{2})s",
+    };
 
-    if (regexec(&regex, filename, 0, NULL, 0) == 0)
+    for (int i = 0; i < len(regex_patterns); i++)
     {
+        regex_t regex;
+        if (regcomp(&regex, regex_patterns[i], REG_EXTENDED) != 0)
+        {
+            regfree(&regex);
+            printf("Failed to compile regular expression");
+            continue;
+        }
+
+        if (regexec(&regex, filename, 0, NULL, 0) == 0)
+        {
+            regfree(&regex);
+            *matched_regex = strdup(regex_patterns[i]);
+            return 1; // Match found
+        }
+
         regfree(&regex);
-        return 1; // Match found
     }
-
-    regfree(&regex);
     return 0; // No match found
 }
 
-char *convert_to_new_format(const char *filename)
+char *convert_to_new_format(const char *filename, const char *matched_regex)
 {
     regex_t regex;
     regmatch_t matches[7];
 
-    if (regcomp(&regex, ".*_([0-9]{4})-([0-9]{2})-([0-9]{2})_([0-9]{2})-([0-9]{2})-([0-9]{2})\\.jpg", REG_EXTENDED) != 0)
+    if (regcomp(&regex, matched_regex, REG_EXTENDED) != 0)
     {
-        perror("Failed to compile regular expression");
+        printf("Failed to compile regular expression");
         return NULL;
     }
 
@@ -116,10 +132,10 @@ char *convert_to_new_format(const char *filename)
         timeinfo.tm_min = atoi(minute);
         timeinfo.tm_sec = atoi(second);
 
-        char *formatted_time = malloc(16);
+        char *formatted_time = malloc(28);
         if (formatted_time == NULL)
         {
-            perror("Memory allocation error");
+            printf("Memory allocation error");
             regfree(&regex);
             return NULL;
         }
@@ -128,7 +144,6 @@ char *convert_to_new_format(const char *filename)
         regfree(&regex);
         return formatted_time;
     }
-
     regfree(&regex);
     return NULL; // No match found
 }
@@ -147,7 +162,7 @@ int rename_file(char *file_path, char *new_name)
     }
 }
 
-int process_directory(const char *dir_path)
+int process_directory(const char *dir_path, const time_t start_time, const time_t end_time)
 {
     DIR *dir;
     struct dirent *ent;
@@ -164,42 +179,57 @@ int process_directory(const char *dir_path)
     {
         char file_path[MAX_LEN];
         char *file_format;
+        char *matched_regex = NULL;
 
         snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, ent->d_name);
         file_format = get_last_el_of_split(file_path, ".");
 
-        // Check if 'ent' represents a regular file (not a directory)
-        if (is_valid_format(file_path, file_format) == 0)
-            continue;
+        // // Check if 'ent' represents a regular file (not a directory)
+        // if (is_valid_format(file_path, file_format) == 0)
+        // {
+        //     continue;
+        // }
 
-        if (has_datetime_format(ent->d_name))
+        if (has_datetime_format(ent->d_name, &matched_regex))
         {
+            printf("Using pattern: %s\n", matched_regex);
             // Check if file already has a correct %Y%m%d_%H%M%S format
-            if (has_correct_date_format(ent->d_name))
+            if (has_correct_date_format(ent->d_name, "%Y%m%d_%H%M%S"))
+            {
+                free(matched_regex);
                 continue;
+            }
 
             // Convert incorrect datetime format to correct one
-            char *formatted_time = convert_to_new_format(ent->d_name);
-            if (formatted_time == NULL)
-                continue;
-            char new_name[MAX_LEN];
-            snprintf(new_name, sizeof(new_name), "%s/%s.%s", dir_path, formatted_time, file_format);
-            printf("%s -> %s\n", ent->d_name, new_name);
-            // rename_file(file_path, new_name);
+            char *formatted_time = convert_to_new_format(ent->d_name, matched_regex);
+            if (formatted_time != NULL)
+            {
+                char new_name[MAX_LEN];
+                snprintf(new_name, sizeof(new_name), "%s/%s.%s", dir_path, formatted_time, file_format);
+                printf("%s -> %s\n", ent->d_name, new_name);
+                // rename_file(file_path, new_name);
+            }
+            free(matched_regex);
             free(formatted_time);
         }
         else
         {
-            // TODO: check modification time and rename using this parameter
+            free(matched_regex);
             struct stat file_stat;
 
-            if (stat(file_path, &file_stat) != 0)
+            if (stat(file_path, &file_stat) == 0)
             {
-                continue;
+                time_t modification_time = file_stat.st_mtime;
+                // printf("Last modification time of %s: %s", file_path, ctime(&modification_time));
+                if (is_in_range(modification_time, start_time, end_time))
+                {
+                    printf("In range: %s\n", file_path);
+                }
+                else
+                {
+                    printf("NOT In range: %s\n", file_path);
+                }
             }
-
-            time_t modification_time = file_stat.st_mtime;
-            printf("Last modification time of %s: %s", file_path, ctime(&modification_time));
         }
     }
     closedir(dir);
@@ -208,13 +238,26 @@ int process_directory(const char *dir_path)
 
 int main(int argc, char *argv[])
 {
-    if (argc < 2)
+    if (argc < 4)
     {
-        printf("The correct format is : %s <file path>", argv[0]);
+        printf("The correct format is : %s <file path> <start_date> <end_date>\n", argv[0]);
         return EXIT_FAILURE;
     }
 
-    process_directory(argv[1]);
+    struct tm start_tm, end_tm;
+    memset(&start_tm, 0, sizeof(struct tm));
+    memset(&end_tm, 0, sizeof(struct tm));
+
+    if (has_correct_date_format(argv[2], "%Y%m%d") == 0 || has_correct_date_format(argv[3], "%Y%m%d") == 0)
+    {
+        printf("Invalid date format. Please use YYYYMMDD format.\n");
+        return EXIT_FAILURE;
+    }
+
+    time_t start_time = mktime(&start_tm);
+    time_t end_time = mktime(&end_tm);
+
+    process_directory(argv[1], start_time, end_time);
 
     return EXIT_SUCCESS;
 }
