@@ -130,7 +130,19 @@ const char *get_datetime_regex_pattern(const char *input)
     return NULL; // No match found, return NULL
 }
 
-int process_directory(const char *dir_path, const time_t start_time, const time_t end_time)
+struct RenamedFile
+{
+    char path[MAX_LEN];
+    char new_name[MAX_LEN];
+};
+
+// Define the function to free the allocated memory for RenamedFile structs
+void free_renamed_files(struct RenamedFile *renamed_files)
+{
+    free(renamed_files); // Free the allocated memory
+}
+
+struct RenamedFile *process_directory(const char *dir_path, const time_t start_time, const time_t end_time, int *num_renamed_files)
 {
     DIR *dir;
     struct dirent *ent;
@@ -139,9 +151,12 @@ int process_directory(const char *dir_path, const time_t start_time, const time_
     if (dir == NULL)
     {
         printf("Unable to open directory: %s\n", dir_path);
-        return 1;
+        return NULL;
     }
     printf("Folder found!\n");
+
+    struct RenamedFile *renamed_files = NULL;
+    int num_files = 0;
 
     while ((ent = readdir(dir)) != NULL)
     {
@@ -175,6 +190,13 @@ int process_directory(const char *dir_path, const time_t start_time, const time_
                 char new_name[MAX_LEN];
                 snprintf(new_name, sizeof(new_name), "%s/%s.%s", dir_path, formatted_time, file_format);
                 printf("%s -> %s\n", ent->d_name, new_name);
+
+                struct RenamedFile new_entry;
+                snprintf(new_entry.path, sizeof(new_entry.path), "%s", file_path);
+                snprintf(new_entry.new_name, sizeof(new_entry.new_name), "%s.%s", formatted_time, file_format);
+                renamed_files = realloc(renamed_files, (num_files + 1) * sizeof(struct RenamedFile));
+                renamed_files[num_files] = new_entry;
+                num_files++;
                 // rename_file(file_path, new_name);
             }
             free(formatted_time);
@@ -186,7 +208,6 @@ int process_directory(const char *dir_path, const time_t start_time, const time_
             if (stat(file_path, &file_stat) == 0)
             {
                 time_t modification_time = file_stat.st_mtime;
-                // printf("Last modification time of %s: %s", file_path, ctime(&modification_time));
                 if (is_in_range(modification_time, start_time, end_time))
                 {
                     printf("In range: %s\n", file_path);
@@ -199,31 +220,6 @@ int process_directory(const char *dir_path, const time_t start_time, const time_
         }
     }
     closedir(dir);
-    return 0;
-}
-
-int main(int argc, char *argv[])
-{
-    if (argc < 4)
-    {
-        printf("The correct format is : %s <file path> <start_date> <end_date>\n", argv[0]);
-        return EXIT_FAILURE;
-    }
-
-    struct tm start_tm, end_tm;
-    memset(&start_tm, 0, sizeof(struct tm));
-    memset(&end_tm, 0, sizeof(struct tm));
-
-    if (has_correct_date_format(argv[2], "%Y%m%d") == 0 || has_correct_date_format(argv[3], "%Y%m%d") == 0)
-    {
-        printf("Invalid date format. Please use YYYYMMDD format.\n");
-        return EXIT_FAILURE;
-    }
-
-    time_t start_time = mktime(&start_tm);
-    time_t end_time = mktime(&end_tm);
-
-    process_directory(argv[1], start_time, end_time);
-
-    return EXIT_SUCCESS;
+    *num_renamed_files = num_files;
+    return renamed_files;
 }

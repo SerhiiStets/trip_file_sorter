@@ -1,22 +1,57 @@
 import ctypes
-import sys
 import argparse
 import os
-import re
-import datetime
+import utils
+from dataclasses import dataclass
+
+MAX_LEN = 256
 
 
-def is_valid_date(date_string):
-    try:
-        datetime.datetime.strptime(date_string, '%Y%m%d')
-        return True
-    except ValueError:
-        return False
+@dataclass
+class File:
+    path: str
+    new_name: str
 
 
-def convert_to_seconds(date_string):
-    date_object = datetime.datetime.strptime(date_string, '%Y%m%d')
-    return int(date_object.timestamp())
+class RenamedFile(ctypes.Structure):
+    _fields_ = [
+        ("path", ctypes.c_char * MAX_LEN),
+        ("new_name", ctypes.c_char * MAX_LEN)
+    ]
+
+
+def get_files(directory, start_date, end_date) -> list[File]:
+    result = []
+    # Load the shared library
+    sorter = ctypes.CDLL('./sorter.so')  # Specify the correct path to your shared library
+
+    # Define the function signature
+    process_directory = sorter.process_directory
+    process_directory.argtypes = [ctypes.c_char_p, ctypes.c_long, ctypes.c_long]
+    process_directory.restype = ctypes.POINTER(RenamedFile)
+
+    # Define start_time and end_time variables
+    start_time = utils.convert_to_seconds(start_date)
+    end_time = utils.convert_to_seconds(end_date)
+
+    # Call the C function
+    num_renamed_files = ctypes.c_int(0)
+    renamed_files_ptr = process_directory(bytes(directory, 'utf-8'), start_time,
+                                          end_time, ctypes.byref(num_renamed_files))
+
+    # Access the returned struct array in Python
+    num_files = num_renamed_files.value
+    renamed_files = [renamed_files_ptr[i] for i in range(num_files)]
+
+    # Print the renamed files
+    for file in renamed_files:
+        path = file.path.decode('utf-8').strip('\x00')
+        new_name = file.new_name.decode('utf-8').strip('\x00')
+        result.append(File(path, new_name))
+
+    # Free the allocated memory in C
+    sorter.free_renamed_files(renamed_files_ptr)
+    return result
 
 
 def main():
@@ -31,7 +66,7 @@ def main():
         print('Error: Invalid directory path.')
         return
 
-    if not is_valid_date(args.start_date) or not is_valid_date(args.end_date):
+    if not utils.is_valid_date(args.start_date) or not utils.is_valid_date(args.end_date):
         print('Error: Invalid date format. Please use YYYYMMDD format.')
         return
 
@@ -39,22 +74,7 @@ def main():
     print('Start Date:', args.start_date)
     print('End Date:', args.end_date)
 
-    # Load the shared library
-    sorter = ctypes.CDLL('./sorter.so')  # Specify the correct path to your shared library
-
-    # Define the function signature
-    process_directory = sorter.process_directory
-    process_directory.argtypes = [ctypes.c_char_p, ctypes.c_long, ctypes.c_long]
-    process_directory.restype = ctypes.c_int
-
-    # Define start_time and end_time variables
-    start_time = convert_to_seconds(args.start_date)
-    end_time = convert_to_seconds(args.end_date)
-
-    # Call the C function
-    result = process_directory(bytes(args.directory, 'utf-8'), start_time, end_time)
-
-    print(f'Result from C function: {result}')
+    results = get_files(args.directory, args.start_date, args.end_date)
 
 
 if __name__ == "__main__":
