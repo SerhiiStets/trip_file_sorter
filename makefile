@@ -1,16 +1,21 @@
 CC = gcc
-CFLAGS = -Wall #-Werror
+CFLAGS = -Wall -fPIC # -Werror 
 
-all: main
+SOURCES = main.c utils.c  # Add source files here
+OBJECTS = $(SOURCES:.c=.o)
+LIBRARY = sorter.so
+EXECUTABLE = main
 
-main: main.o utils.o 
-	$(CC) $(CFLAGS) -o main main.o utils.o 
+all: $(EXECUTABLE) $(LIBRARY)
 
-main.o: main.c
-	$(CC) $(CFLAGS) -c main.c
+$(EXECUTABLE): $(OBJECTS)
+	$(CC) $(CFLAGS) -o $@ $(OBJECTS)
 
-utils.o: utils.c
-	$(CC) $(CFLAGS) -c utils.c
+$(LIBRARY): $(OBJECTS)
+	$(CC) -shared -o $@ $(OBJECTS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f *.o main
+	rm -f $(OBJECTS) $(LIBRARY) $(EXECUTABLE)
