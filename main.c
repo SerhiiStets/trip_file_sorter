@@ -4,37 +4,14 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <time.h>
 #include <unistd.h>
 #include <regex.h>
+#include <time.h>
+
+#include "utils.h"
 
 #define MAX_LEN 256
 #define len(x) (sizeof(x) / sizeof(x[0]))
-
-int is_in_range(time_t modification_time, time_t start_time, time_t finish_time)
-{
-    return (modification_time >= start_time && modification_time <= finish_time);
-}
-
-/* Returns last element of string split by given delimeter */
-char *get_last_el_of_split(char *path, char *delim)
-{
-    char *path_copy = strdup(path); // Create a copy of the input string
-    char *file_format;
-    char *token = strtok(path_copy, delim);
-    while (token != NULL)
-    {
-        file_format = token;
-        token = strtok(NULL, delim);
-    }
-    free(path_copy);
-    if (file_format == NULL)
-    {
-        // Handle the case where no tokens were found
-        // (return a default value, print an error, etc.)
-    }
-    return file_format;
-}
 
 /* Check if given path is a file of correct format */
 int is_valid_format(char *path, char *file_format)
@@ -56,17 +33,6 @@ int is_valid_format(char *path, char *file_format)
     }
 
     printf("Wrong format:\n%s\n\n", file_format);
-    return 0;
-}
-
-/* Check if file has correct date time format in name */
-int has_correct_date_format(const char *string, const char *format)
-{
-    struct tm tm;
-
-    if (strptime(string, format, &tm) != NULL)
-        return 1;
-
     return 0;
 }
 
@@ -150,15 +116,16 @@ char *convert_to_new_format(const char *filename, const char *matched_regex)
 
 int rename_file(char *file_path, char *new_name)
 {
-
     // Rename the file using the rename() function
     if (rename(file_path, new_name) != 0)
     {
         printf("Error renaming file");
+        return 0;
     }
     else
     {
         printf("Renamed: %s -> %s\n", file_path, new_name);
+        return 1;
     }
 }
 
@@ -184,15 +151,14 @@ int process_directory(const char *dir_path, const time_t start_time, const time_
         snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, ent->d_name);
         file_format = get_last_el_of_split(file_path, ".");
 
-        // // Check if 'ent' represents a regular file (not a directory)
-        // if (is_valid_format(file_path, file_format) == 0)
-        // {
-        //     continue;
-        // }
+        // Check if 'ent' represents a regular file (not a directory)
+        if (is_valid_format(file_path, file_format) == 0)
+        {
+            continue;
+        }
 
         if (has_datetime_format(ent->d_name, &matched_regex))
         {
-            printf("Using pattern: %s\n", matched_regex);
             // Check if file already has a correct %Y%m%d_%H%M%S format
             if (has_correct_date_format(ent->d_name, "%Y%m%d_%H%M%S"))
             {
