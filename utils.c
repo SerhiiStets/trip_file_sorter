@@ -1,6 +1,22 @@
 #include <time.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+int rename_file(char *file_path, char *new_name)
+{
+    // Rename the file using the rename() function
+    if (rename(file_path, new_name) != 0)
+    {
+        printf("Error renaming file");
+        return 0;
+    }
+    else
+    {
+        printf("Renamed: %s -> %s\n", file_path, new_name);
+        return 1;
+    }
+}
 
 /* Check if file has correct date time format in name */
 int has_correct_date_format(const char *string, const char *format)

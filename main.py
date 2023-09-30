@@ -20,10 +20,10 @@ class RenamedFile(ctypes.Structure):
     ]
 
 
-def get_files(directory, start_date, end_date) -> list[File]:
+def get_files(directory: str, start_date: str, end_date: str) -> list[File]:
     result = []
     # Load the shared library
-    sorter = ctypes.CDLL('./sorter.so')  # Specify the correct path to your shared library
+    sorter = ctypes.CDLL('./c_formatter.so')  # Specify the correct path to your shared library
 
     # Define the function signature
     process_directory = sorter.process_directory
@@ -54,7 +54,7 @@ def get_files(directory, start_date, end_date) -> list[File]:
     return result
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description='Process directory and dates.')
     parser.add_argument('directory', type=str, help='Path to the directory')
     parser.add_argument('start_date', type=str, help='Start date in YYYYMMDD format')
@@ -74,7 +74,11 @@ def main():
     print('Start Date:', args.start_date)
     print('End Date:', args.end_date)
 
-    results = get_files(args.directory, args.start_date, args.end_date)
+    files: list[File] = get_files(args.directory, args.start_date, args.end_date)
+
+    for el in files:
+        new_path = "/".join(el.path.split("/")[:-1]) + el.new_name
+        utils.rename_file(el.path, new_path)
 
 
 if __name__ == "__main__":
