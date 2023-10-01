@@ -87,6 +87,74 @@ void rename_file_and_add_entry(const char *dir_path, const char *file_path, cons
     (*num_files)++;
 }
 
+int process_file(const char *dir_path, const char *file_name, const time_t start_time, const time_t end_time, RenamedFile *renamed_files, const int *num_files)
+{
+    char file_path[MAX_LEN];
+    snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, file_name);
+
+    char *file_format = get_last_el_of_split(file_path, ".");
+
+    // Check if file has correct format
+    if (is_valid_format(file_path, file_format) == 0)
+        return 1;
+
+    const char *datetime_matched_pattern = get_datetime_regex_pattern(file_name);
+
+    if (datetime_matched_pattern != NULL)
+    {
+        // Check if file already has a correct %Y%m%d_%H%M%S format
+        if (!has_correct_date_format(file_name, "%Y%m%d_%H%M%S"))
+        {
+            // Convert incorrect datetime format to correct one
+            char *formatted_time = convert_to_new_format(file_name, datetime_matched_pattern);
+
+            // For some reason unkown to me if you don't rerun file_format function
+            // some file_path formats would be corrupted after convert_to_new-format call
+            // TODO: solve why and remove this duplicated call
+            file_format = get_last_el_of_split(file_path, ".");
+
+            if (formatted_time != NULL)
+            {
+                rename_file_and_add_entry(dir_path, file_path, formatted_time, file_format, &renamed_files, &num_files);
+                free(formatted_time);
+            }
+        }
+    }
+    else
+    {
+        struct stat file_stat;
+
+        if (stat(file_path, &file_stat) != 0)
+            return 0;
+
+        time_t modification_time = file_stat.st_mtime;
+
+        if (is_in_range(modification_time, start_time, end_time))
+        {
+            // File modified time is within the specified range
+            struct tm *timeinfo = localtime(&modification_time);
+            char formatted_time[18]; // Allocate memory for the formatted time (YYYYMMDD_HHMMSS\0)
+            // For some reason unkown to me if you don't rerun file_format function
+            // some file_path formats would be corrupted after convert_to_new-format call
+            // TODO: solve why and remove this duplicated call
+            file_format = get_last_el_of_split(file_path, ".");
+
+            if (formatted_time != NULL)
+            {
+                strftime(formatted_time, sizeof(formatted_time), "%Y%m%d_%H%M%S", timeinfo);
+                rename_file_and_add_entry(dir_path, file_path, formatted_time, file_format, &renamed_files, &num_files);
+            }
+            else
+                fprintf(stderr, "Memory allocation error\n");
+        }
+        else
+        {
+            printf("NOT In range: %s - %s\n", file_path, ctime(&modification_time));
+        }
+    }
+    return 1;
+}
+
 RenamedFile *process_directory(const char *dir_path, const time_t start_time, const time_t end_time, int *num_renamed_files)
 {
     DIR *dir = opendir(dir_path);
@@ -103,70 +171,7 @@ RenamedFile *process_directory(const char *dir_path, const time_t start_time, co
 
     while ((ent = readdir(dir)) != NULL)
     {
-        char file_path[MAX_LEN];
-        snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, ent->d_name);
-
-        char *file_format = get_last_el_of_split(file_path, ".");
-
-        // Check if file has correct format
-        if (is_valid_format(file_path, file_format) == 0)
-            continue;
-
-        const char *datetime_matched_pattern = get_datetime_regex_pattern(ent->d_name);
-
-        if (datetime_matched_pattern != NULL)
-        {
-            // Check if file already has a correct %Y%m%d_%H%M%S format
-            if (has_correct_date_format(ent->d_name, "%Y%m%d_%H%M%S"))
-                continue;
-
-            // Convert incorrect datetime format to correct one
-            char *formatted_time = convert_to_new_format(ent->d_name, datetime_matched_pattern);
-
-            // For some reason unkown to me if you don't rerun file_format function
-            // some file_path formats would be corrupted after convert_to_new-format call
-            // TODO: solve why and remove this duplicated call
-            file_format = get_last_el_of_split(file_path, ".");
-
-            if (formatted_time != NULL)
-            {
-                rename_file_and_add_entry(dir_path, file_path, formatted_time, file_format, &renamed_files, &num_files);
-            }
-            free(formatted_time);
-        }
-        else
-        {
-            struct stat file_stat;
-
-            if (stat(file_path, &file_stat) != 0)
-                continue;
-
-            time_t modification_time = file_stat.st_mtime;
-
-            if (is_in_range(modification_time, start_time, end_time))
-            {
-                // File modified time is within the specified range
-                struct tm *timeinfo = localtime(&modification_time);
-                char *formatted_time = malloc(18); // Allocate memory for the formatted time (YYYYMMDD_HHMMSS\0)
-                // For some reason unkown to me if you don't rerun file_format function
-                // some file_path formats would be corrupted after convert_to_new-format call
-                // TODO: solve why and remove this duplicated call
-                file_format = get_last_el_of_split(file_path, ".");
-
-                if (formatted_time != NULL)
-                {
-                    strftime(formatted_time, 18, "%Y%m%d_%H%M%S", timeinfo);
-                    rename_file_and_add_entry(dir_path, file_path, formatted_time, file_format, &renamed_files, &num_files);
-                    free(formatted_time);
-                }
-                else
-                    fprintf(stderr, "Memory allocation error\n");
-            }
-            else
-            {
-                printf("NOT In range: %s - %s\n", file_path, ctime(&modification_time));
-            }
-        }
+        process_file(dir_path, ent->d_name, start_time, end_time, renamed_files, num_files);
     }
     closedir(dir);
     *num_renamed_files = num_files;
