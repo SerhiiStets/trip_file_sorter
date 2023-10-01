@@ -8,7 +8,7 @@ int rename_file(char *file_path, char *new_name)
     // Rename the file using the rename() function
     if (rename(file_path, new_name) != 0)
     {
-        printf("Error renaming file");
+        fprintf(stderr, "Error renaming file");
         return 0;
     }
     else

@@ -13,19 +13,19 @@
 
 #define MAX_LEN 256
 
-struct RenamedFile
+typedef struct RenamedFile
 {
     char path[MAX_LEN];
     char new_name[MAX_LEN];
-};
+} RenamedFile;
 
 // Define the function to free the allocated memory for RenamedFile structs
-void free_renamed_files(struct RenamedFile *renamed_files)
+void free_renamed_files(RenamedFile *renamed_files)
 {
     free(renamed_files); // Free the allocated memory
 }
 
-void resolve_duplicate_names(struct RenamedFile *renamed_files, int num_files)
+void resolve_duplicate_names(RenamedFile *renamed_files, int num_files)
 {
     for (int i = 0; i < num_files - 1; ++i)
     {
@@ -66,38 +66,39 @@ void resolve_duplicate_names(struct RenamedFile *renamed_files, int num_files)
         }
     }
 }
-void rename_file_and_add_entry(const char *dir_path, const char *file_path, const char *formatted_time, const char *file_format, struct RenamedFile **renamed_files, int *num_files)
+
+void rename_file_and_add_entry(const char *dir_path, const char *file_path, const char *formatted_time, const char *file_format, RenamedFile **renamed_files, int *num_files)
 {
     char new_name[MAX_LEN];
     snprintf(new_name, sizeof(new_name), "%s/%s.%s", dir_path, formatted_time, file_format);
     printf("%s -> %s\n", file_path, new_name);
 
-    struct RenamedFile new_entry;
+    RenamedFile new_entry;
     snprintf(new_entry.path, sizeof(new_entry.path), "%s", file_path);
     snprintf(new_entry.new_name, sizeof(new_entry.new_name), "%s.%s", formatted_time, file_format);
 
-    *renamed_files = realloc(*renamed_files, (*num_files + 1) * sizeof(struct RenamedFile));
+    *renamed_files = realloc(*renamed_files, (*num_files + 1) * sizeof(RenamedFile));
     if (*renamed_files == NULL)
     {
-        printf("Memory allocation error\n");
+        fprintf(stderr, "Memory allocation error\n");
         exit(EXIT_FAILURE);
     }
     (*renamed_files)[*num_files] = new_entry;
     (*num_files)++;
 }
 
-struct RenamedFile *process_directory(const char *dir_path, const time_t start_time, const time_t end_time, int *num_renamed_files)
+RenamedFile *process_directory(const char *dir_path, const time_t start_time, const time_t end_time, int *num_renamed_files)
 {
     DIR *dir = opendir(dir_path);
     struct dirent *ent;
 
     if (dir == NULL)
     {
-        printf("Unable to open directory: %s\n", dir_path);
+        fprintf(stderr, "Unable to open directory: %s\n", dir_path);
         return NULL;
     }
 
-    struct RenamedFile *renamed_files = NULL;
+    RenamedFile *renamed_files = NULL;
     int num_files = 0;
 
     while ((ent = readdir(dir)) != NULL)
@@ -130,7 +131,6 @@ struct RenamedFile *process_directory(const char *dir_path, const time_t start_t
             if (formatted_time != NULL)
             {
                 rename_file_and_add_entry(dir_path, file_path, formatted_time, file_format, &renamed_files, &num_files);
-                // rename_file(file_path, new_name);
             }
             free(formatted_time);
         }
@@ -160,10 +160,7 @@ struct RenamedFile *process_directory(const char *dir_path, const time_t start_t
                     free(formatted_time);
                 }
                 else
-                {
-                    printf("Memory allocation error\n");
-                }
-                // printf("In range: %s\n", file_path);
+                    fprintf(stderr, "Memory allocation error\n");
             }
             else
             {
