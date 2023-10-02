@@ -4,6 +4,9 @@ import os
 import utils
 from dataclasses import dataclass
 
+
+import rust_formatter
+
 MAX_LEN = 256
 
 
@@ -20,24 +23,20 @@ class RenamedFile(ctypes.Structure):
     ]
 
 
-def get_files(directory: str, start_date: str, end_date: str) -> list[File]:
+def c_solution(directory: str, start_date: str, end_date: str) -> list[File]:
     result = []
     # Load the shared library
-    sorter = ctypes.CDLL('./c_formatter.so')  # Specify the correct path to your shared library
+    sorter = ctypes.CDLL('./c_formatter/c_formatter.so')  # Specify the correct path to your shared library
 
     # Define the function signature
     process_directory = sorter.process_directory
     process_directory.argtypes = [ctypes.c_char_p, ctypes.c_long, ctypes.c_long]
     process_directory.restype = ctypes.POINTER(RenamedFile)
 
-    # Define start_time and end_time variables
-    start_time = utils.convert_to_seconds(start_date)
-    end_time = utils.convert_to_seconds(end_date)
-
     # Call the C function
     num_renamed_files = ctypes.c_int(0)
-    renamed_files_ptr = process_directory(bytes(directory, 'utf-8'), start_time,
-                                          end_time, ctypes.byref(num_renamed_files))
+    renamed_files_ptr = process_directory(bytes(directory, 'utf-8'), start_date,
+                                          end_date, ctypes.byref(num_renamed_files))
 
     # Access the returned struct array in Python
     num_files = num_renamed_files.value
@@ -53,9 +52,20 @@ def get_files(directory: str, start_date: str, end_date: str) -> list[File]:
     sorter.free_renamed_files(renamed_files_ptr)
     return result
 
+def rust_solution(directory: str, start_date: str, end_date: str) -> list[File]:
+    files = rust_formatter.get_sorted_files(directory, start_date, end_date)
+    print(files[0].file_path)
+
+
 
 def main() -> None:
+    solutions = {
+        "c": c_solution,
+        "rust": rust_solution
+    }
+
     parser = argparse.ArgumentParser(description='Process directory and dates.')
+    parser.add_argument('solution', type=str, choices=["c", "rust"], help='Chose solution')
     parser.add_argument('directory', type=str, help='Path to the directory')
     parser.add_argument('start_date', type=str, help='Start date in YYYYMMDD format')
     parser.add_argument('end_date', type=str, help='End date in YYYYMMDD format')
@@ -73,12 +83,16 @@ def main() -> None:
     print('Directory:', args.directory)
     print('Start Date:', args.start_date)
     print('End Date:', args.end_date)
+    # Define start_time and end_time variables
+    start_date = utils.convert_to_seconds(args.start_date)
+    end_date = utils.convert_to_seconds(args.end_date)
 
-    files: list[File] = get_files(args.directory, args.start_date, args.end_date)
+    files: list[File] = solutions[args.solution](args.directory, start_date, end_date)
 
-    for el in files:
-        new_path = "/".join(el.path.split("/")[:-1]) + el.new_name
-        utils.rename_file(el.path, new_path)
+    # for el in files:
+    #     new_path = "/".join(el.path.split("/")[:-1]) + el.new_name
+    #     utils.rename_file(el.path, new_path)
+
 
 
 if __name__ == "__main__":
